@@ -1,48 +1,35 @@
 """
-Database Schemas
+Database Schemas for ViralCoin Mini App
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
-
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Each Pydantic model represents a collection in MongoDB.
+Collection name is the lowercase of the class name.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
 
-# Example schemas (replace with your own):
 
-class User(BaseModel):
+class Miniapp(BaseModel):
     """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
+    Mini apps submitted to the store
+    Collection name: "miniapp"
     """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    name: str = Field(..., min_length=2, max_length=80, description="App name")
+    description: str = Field(..., min_length=10, max_length=300, description="Short description")
+    url: HttpUrl = Field(..., description="Public URL to open the mini app")
+    icon: Optional[HttpUrl] = Field(None, description="Optional app icon URL")
+    author: Optional[str] = Field(None, description="Wallet address or name of the author")
+    tags: Optional[list[str]] = Field(default_factory=list, description="Tags for discovery")
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
 
-# Add your own schemas here:
-# --------------------------------------------------
-
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Transferlog(BaseModel):
+    """
+    Logs of transfers initiated via the ViralCoin mini app
+    Collection name: "transferlog"
+    """
+    from_pubkey: str = Field(..., description="Sender wallet address (base58)")
+    to_pubkey: str = Field(..., description="Recipient wallet address (base58)")
+    amount_sol: float = Field(..., gt=0, description="Amount in SOL")
+    signature: Optional[str] = Field(None, description="Transaction signature if available")
+    network: str = Field("mainnet-beta", description="Solana cluster: devnet/testnet/mainnet-beta")
+    note: Optional[str] = Field(None, description="Optional memo or note")

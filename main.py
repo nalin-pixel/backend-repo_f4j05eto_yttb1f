@@ -1,8 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 
-app = FastAPI()
+from database import db, create_document, get_documents
+from schemas import Miniapp, Transferlog
+
+app = FastAPI(title="ViralCoin Mini Apps API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,13 +17,76 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"message": "ViralCoin API running"}
 
-@app.get("/api/hello")
-def hello():
-    return {"message": "Hello from the backend API!"}
+
+# Mini App Store endpoints
+class MiniAppCreate(BaseModel):
+    name: str
+    description: str
+    url: str
+    icon: Optional[str] = None
+    author: Optional[str] = None
+    tags: Optional[List[str]] = []
+
+
+@app.post("/api/miniapps")
+def create_miniapp(payload: MiniAppCreate):
+    try:
+        miniapp = Miniapp(**payload.model_dump())
+        inserted_id = create_document("miniapp", miniapp)
+        return {"ok": True, "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/miniapps")
+def list_miniapps():
+    try:
+        items = get_documents("miniapp", {}, limit=100)
+        # Convert ObjectId to str
+        for item in items:
+            if "_id" in item:
+                item["id"] = str(item.pop("_id"))
+        return {"ok": True, "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Transfer logging endpoint (note: signing happens client-side; backend only logs metadata)
+class TransferLogCreate(BaseModel):
+    from_pubkey: str
+    to_pubkey: str
+    amount_sol: float
+    signature: Optional[str] = None
+    network: str = "mainnet-beta"
+    note: Optional[str] = None
+
+
+@app.post("/api/transfers/log")
+def log_transfer(payload: TransferLogCreate):
+    try:
+        doc = Transferlog(**payload.model_dump())
+        inserted_id = create_document("transferlog", doc)
+        return {"ok": True, "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/transfers")
+def list_transfers(limit: int = 50):
+    try:
+        items = get_documents("transferlog", {}, limit=limit)
+        for item in items:
+            if "_id" in item:
+                item["id"] = str(item.pop("_id"))
+        return {"ok": True, "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/test")
 def test_database():
@@ -31,37 +99,29 @@ def test_database():
         "connection_status": "Not Connected",
         "collections": []
     }
-    
+
     try:
-        # Try to import database module
-        from database import db
-        
         if db is not None:
             response["database"] = "✅ Available"
             response["database_url"] = "✅ Configured"
             response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
             response["connection_status"] = "Connected"
-            
-            # Try to list collections to verify connectivity
+
             try:
                 collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
+                response["collections"] = collections[:10]
                 response["database"] = "✅ Connected & Working"
             except Exception as e:
                 response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
         else:
             response["database"] = "⚠️  Available but not initialized"
-            
-    except ImportError:
-        response["database"] = "❌ Database module not found (run enable-database first)"
+
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:50]}"
-    
-    # Check environment variables
-    import os
+
     response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
-    
+
     return response
 
 
